@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Spacewar.vcxproj" Id="5185df8a-10e9-4ca4-b141-24df54e7fcb1" />
+</Solution>
