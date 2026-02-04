@@ -2,11 +2,10 @@
 
 #include <atomic>
 #include <unordered_map>
-#include <mutex>
+#include <shared_mutex>
 #include <memory>
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/System/Vector2.hpp>
-#include <algorithm>
 
 class Asteroid;
 
@@ -29,190 +28,48 @@ class AsteroidComponentManager
 public:
     using Id = size_t;
 
-    static AsteroidComponentManager& instance()
-    {
-        static AsteroidComponentManager mgr;
-        return mgr;
-    }
+    static AsteroidComponentManager& instance();
 
-    Id create(Asteroid* owner, int initialLevel)
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        Id id = nextId_++;
-        AsteroidComponent comp;
-        comp.id = id;
-        comp.owner = owner;
-        comp.level = std::max(0, initialLevel);
-        comp.rotationSpeed = 25.0f;
-        comp.defaultSpeed = 400.0f;
-        comp.speed = comp.defaultSpeed;
-        comp.direction = { 0.f, 0.f };
-        const float radius = BaseRadius + comp.level * RadiusStep;
-        comp.shape.setRadius(radius);
-        comp.shape.setPointCount(8);
-        comp.shape.setFillColor(sf::Color(50, 50, 50));
-        comp.shape.setOutlineColor(sf::Color(100, 100, 100));
-        comp.shape.setOutlineThickness(4.0f);
-        comp.shape.setOrigin({ radius, radius });
+    Id create(Asteroid* owner, int initialLevel);
+    void destroy(Id id);
 
-        components_.emplace(id, std::move(comp));
-        ownerMap_.emplace(owner, id);
+    void update(Id id, float deltaTime);
 
-        if (owner) {
-            owner->setCollisionRadius(radius);
-            owner->setShapePointCount(8);
-        }
+    void setLevel(Id id, int newLevel);
+    void decreaseLevel(Id id);
 
-        return id;
-    }
+    int getLevel(Id id);
+    float getDefaultSpeed(Id id);
 
-    void destroy(Id id)
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = components_.find(id);
-        if (it != components_.end()) {
-            // remove owner mapping
-            if (it->second.owner) {
-                ownerMap_.erase(it->second.owner);
-            }
-            components_.erase(it);
-        }
-    }
+    void setDirection(Id id, const sf::Vector2f& dir);
+    sf::Vector2f getDirection(Id id);
 
-    void update(Id id, float deltaTime)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        if (!c) return;
+    void setSpeed(Id id, float s);
+    float getSpeed(Id id);
 
-        c->shape.rotate(sf::degrees(c->rotationSpeed * deltaTime));
+    float getRadius(Id id);
+    sf::CircleShape getShapeCopy(Id id);
 
-        if (c->owner)
-        {
-            c->owner->move(c->direction * c->speed * deltaTime);
-        }
-    }
+    Id getIdForOwner(Asteroid* owner);
+    void setDirectionByOwner(Asteroid* owner, const sf::Vector2f& dir);
+    void setSpeedByOwner(Asteroid* owner, float s);
+    void setLevelByOwner(Asteroid* owner, int level);
+    int getLevelByOwner(Asteroid* owner);
+    float getDefaultSpeedByOwner(Asteroid* owner);
+    float getRadiusByOwner(Asteroid* owner);
 
-    void setLevel(Id id, int newLevel)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        if (!c) return;
-        c->level = std::max(0, newLevel);
-        const float r = BaseRadius + c->level * RadiusStep;
-        c->shape.setRadius(r);
-        c->shape.setOrigin({ r, r });
-        // keep wrapper collision in sync
-        if (c->owner) c->owner->setCollisionRadius(r);
-    }
-
-    void decreaseLevel(Id id)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        if (!c) return;
-        if (c->level > 0) --c->level;
-        const float r = BaseRadius + c->level * RadiusStep;
-        c->shape.setRadius(r);
-        c->shape.setOrigin({ r, r });
-        if (c->owner) c->owner->setCollisionRadius(r);
-    }
-
-    // accessors used by external systems (owner-based APIs)
-    Id getIdForOwner(Asteroid* owner)
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = ownerMap_.find(owner);
-        return it != ownerMap_.end() ? it->second : 0;
-    }
-
-    void setDirectionByOwner(Asteroid* owner, const sf::Vector2f& dir)
-    {
-        Id id = getIdForOwner(owner);
-        if (id) setDirection(id, dir);
-    }
-
-    void setSpeedByOwner(Asteroid* owner, float s)
-    {
-        Id id = getIdForOwner(owner);
-        if (id) setSpeed(id, s);
-    }
-
-    void setLevelByOwner(Asteroid* owner, int level)
-    {
-        Id id = getIdForOwner(owner);
-        if (id) setLevel(id, level);
-    }
-
-    int getLevelByOwner(Asteroid* owner)
-    {
-        Id id = getIdForOwner(owner);
-        return id ? getLevel(id) : 0;
-    }
-
-    float getDefaultSpeedByOwner(Asteroid* owner)
-    {
-        Id id = getIdForOwner(owner);
-        return id ? getDefaultSpeed(id) : 0.0f;
-    }
-
-    // original id-based accessors
-    int getLevel(Id id)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        return c ? c->level : 0;
-    }
-
-    float getDefaultSpeed(Id id)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        return c ? c->defaultSpeed : 0.0f;
-    }
-
-    void setDirection(Id id, const sf::Vector2f& dir)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        if (!c) return;
-        c->direction = dir;
-    }
-
-    sf::Vector2f getDirection(Id id)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        return c ? c->direction : sf::Vector2f{};
-    }
-
-    void setSpeed(Id id, float s)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        if (!c) return;
-        c->speed = s;
-    }
-
-    float getSpeed(Id id)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        return c ? c->speed : 0.0f;
-    }
-
-    const sf::CircleShape* getShape(Id id)
-    {
-        AsteroidComponent* c = getUnlocked(id);
-        return c ? &c->shape : nullptr;
-    }
+    std::vector<Id> snapshotIds();
 
 private:
     AsteroidComponentManager() = default;
     ~AsteroidComponentManager() = default;
 
-    AsteroidComponent* getUnlocked(Id id)
-    {
-        // _caller_ should lock for write; here we lock per-access for safety.
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = components_.find(id);
-        if (it == components_.end()) return nullptr;
-        return &it->second;
-    }
+    // internal helpers
+    AsteroidComponent* findComponentLocked(Id id);
+    AsteroidComponent* findComponentShared(Id id);
 
-    std::mutex mutex_;
-    std::atomic<Id> nextId_{ 1 };
+    mutable std::shared_mutex mutex_;
+    std::atomic<Id> nextId_{1};
     std::unordered_map<Id, AsteroidComponent> components_;
     std::unordered_map<Asteroid*, Id> ownerMap_;
 

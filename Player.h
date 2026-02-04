@@ -29,7 +29,6 @@ private:
     float turnDirection{};
     float turnRate;
 
-    // Event subscription ids (0 means not subscribed)
     EventBus::HandlerId keySubId{0};
     EventBus::HandlerId mouseSubId{0};
 };

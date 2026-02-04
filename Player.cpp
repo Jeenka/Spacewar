@@ -22,12 +22,10 @@ Player::Player() : Entity(0.0f),
 	headingShape.setOrigin({ headingShape.getRadius(), headingShape.getRadius() + 7.0f });
 	headingShape.setPosition(shape.getPosition());
 
-	// Subscribe to key events
 	keySubId = GlobalEventBus().subscribe<KeyEvent>(
 		[this](const KeyEvent& ev)
 		{
 			using KE = KeyEvent;
-			// Map arrow keys / WASD to thrust and turning for demonstration.
 			const int keyUp = static_cast<int>(sf::Keyboard::Key::Up);
 			const int keyDown = static_cast<int>(sf::Keyboard::Key::Down);
 			const int keyLeft = static_cast<int>(sf::Keyboard::Key::Left);
@@ -56,7 +54,6 @@ Player::Player() : Entity(0.0f),
 
 Player::~Player()
 {
-	// Unsubscribe to avoid dangling handlers (safe even if id==0)
 	if (keySubId) GlobalEventBus().unsubscribe<KeyEvent>(keySubId);
 	if (mouseSubId) GlobalEventBus().unsubscribe<MouseEvent>(mouseSubId);
 }

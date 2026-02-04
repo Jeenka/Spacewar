@@ -16,7 +16,7 @@ class Game
 {
 public:
 	Game();
-	~Game(); // added to unsubscribe from EventBus
+	~Game();
 	void run();
 
 private:

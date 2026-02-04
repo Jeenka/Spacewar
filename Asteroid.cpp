@@ -3,7 +3,7 @@
 #include <SFML/Graphics/RenderTarget.hpp>
 
 Asteroid::Asteroid(int initialLevel) noexcept
-    : Entity(static_cast<const float&>(0.0f))
+    : Entity(0.0f)
 {
     componentId = AsteroidComponentManager::instance().create(this, initialLevel);
     speed = AsteroidComponentManager::instance().getDefaultSpeed(componentId);
@@ -45,10 +45,10 @@ void Asteroid::decreaseLevel() noexcept
 void Asteroid::draw(sf::RenderTarget& target, sf::RenderStates states) const
 {
     states.transform = getTransform();
-    const sf::CircleShape* s = componentId ? AsteroidComponentManager::instance().getShape(componentId) : nullptr;
-    if (s)
+    if (componentId)
     {
-        target.draw(*s, states);
+        sf::CircleShape shapeCopy = AsteroidComponentManager::instance().getShapeCopy(componentId);
+        target.draw(shapeCopy, states);
     }
     else
     {

@@ -7,6 +7,7 @@
 #include "AsteroidComponent.h"
 #include <algorithm>
 #include <iostream>
+#include <cmath>
 
 Game::Game() :
     gameState(GameState::MENU),
@@ -62,7 +63,6 @@ void Game::handleInput()
 {
     while (const std::optional event = window.pollEvent())
     {
-        // Publish input events to the global EventBus so subscribers (Player, UI, etc.) can react.
         if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>())
         {
             KeyEvent ke{ static_cast<int>(keyPressed->scancode), KeyEvent::Action::Press };
@@ -189,7 +189,7 @@ void Game::update(float deltaTime)
 
     const std::string scoreString = "Score: " + std::to_string(score);
     scoreText->setString(scoreString);
-    scoreText->setOrigin(sf::Vector2f(scoreText->getLocalBounds().size.x + 10.0f, 0.0f));//
+    scoreText->setOrigin(sf::Vector2f(scoreText->getLocalBounds().size.x + 10.0f, 0.0f));
 
     const std::string remainintTimeInZoneText = std::to_string(static_cast<int>(1 + timeToCompleteZone - zoneTimer.getElapsedTime().asSeconds()));
     timeInZoneText->setString(remainintTimeInZoneText);
@@ -243,23 +243,44 @@ void Game::checkCollisions()
         {
             bulletPool.release(bullet);
             entities.remove(bullet);
+            continue;
         }
+
+        const sf::Vector2f bulletPos = bullet->getPosition();
+        const float bulletRadius = bullet->getCollisionRadius();
+        bool bulletConsumed = false;
 
         for (Asteroid* asteroid : asteroidPool.getActiveObjects())
         {
             if (!asteroid) continue;
 
-            if (bullet->intersects(*asteroid))
+            float asteroidRadius = AsteroidComponentManager::instance().getRadiusByOwner(asteroid);
+            if (asteroidRadius <= 0.0f) continue;
+
+            const sf::Vector2f asteroidPos = asteroid->getPosition();
+            const float dx = bulletPos.x - asteroidPos.x;
+            const float dy = bulletPos.y - asteroidPos.y;
+            const float distSq = dx * dx + dy * dy;
+            const float minDist = bulletRadius + asteroidRadius;
+
+            if (distSq <= (minDist * minDist))
             {
                 score += pointsPerAsteroidLevel * asteroid->getLevel();
 
                 bulletPool.release(bullet);
                 entities.remove(bullet);
+
                 splitAsteroid(asteroid);
+                bulletConsumed = true;
                 break;
             }
         }
+
+        if (bulletConsumed) continue;
     }
+
+    const sf::Vector2f playerPos = player.getPosition();
+    const float playerRadius = player.getCollisionRadius();
 
     for (Asteroid* asteroid : asteroidPool.getActiveObjects())
     {
@@ -269,12 +290,23 @@ void Game::checkCollisions()
         {
             asteroidPool.release(asteroid);
             entities.remove(asteroid);
+            continue;
         }
 
-        if (player.intersects(*asteroid))
+        float asteroidRadius = AsteroidComponentManager::instance().getRadiusByOwner(asteroid);
+        if (asteroidRadius <= 0.0f) continue;
+
+        const sf::Vector2f asteroidPos = asteroid->getPosition();
+        const float dx = playerPos.x - asteroidPos.x;
+        const float dy = playerPos.y - asteroidPos.y;
+        const float distSq = dx * dx + dy * dy;
+        const float minDist = playerRadius + asteroidRadius;
+
+        if (distSq <= (minDist * minDist))
         {
             gameState = GameState::GAME_OVER;
             finishGame();
+            break;
         }
     }
 }
@@ -430,7 +462,6 @@ void Game::trySpawnAsteroid()
 
     asteroid->setPosition({ x, y });
 
-    // Use component-manager owner-based API (no wrapper forwarders)
     AsteroidComponentManager::instance().setDirectionByOwner(asteroid, direction);
     AsteroidComponentManager::instance().setLevelByOwner(asteroid, rand() % 3 + 1);
     float speed = AsteroidComponentManager::instance().getDefaultSpeedByOwner(asteroid) + (rand() % 200 - 100);
@@ -453,7 +484,6 @@ void Game::splitAsteroid(Asteroid* asteroid)
         return;
     }
 
-    // decrease original asteroid level in component store
     AsteroidComponentManager::instance().decreaseLevel(AsteroidComponentManager::instance().getIdForOwner(asteroid));
 
     Asteroid* newAsteroid = asteroidPool.acquire();
